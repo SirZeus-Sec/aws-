@@ -19,14 +19,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
 
-      - name: Send Discord Notification on Failure
-        if: failure()  # Only runs if Gitleaks detects secrets
+      - name: Send Webhook Notification
+        if: always()
         run: |
-          curl -H "Content-Type: application/json" -X POST -d '{
-            "username": "Gitleaks",
-            "avatar_url": "https://github.com/gitleaks.png",
-            "content": "🚨 **Gitleaks detected secrets in a PR!**\n🔍 Repository: ${{ github.repository }}\n🔗 View Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          }' $DISCORD_WEBHOOK
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{"content": "🔴 Gitleaks Scan Completed! Check results: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
+          "${{ secrets.DISCORD_WEBHOOK }}"
+
 
