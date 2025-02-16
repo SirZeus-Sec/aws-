@@ -32,13 +32,20 @@ jobs:
             echo "SECRETS_FOUND=true" >> $GITHUB_ENV
           fi
 
-      - name: Send Discord Notification if Leaks Detected
+      - name: Extract Secret Details
         if: env.SECRETS_FOUND == 'true'
         run: |
-          curl -H "Content-Type: application/json" \
-          -X POST \
-          -d '{
-            "username": "Gitleaks",
-            "avatar_url": "https://avatars.githubusercontent.com/u/60353350?s=200&v=4",
-            "content": "🚨 **Secret Detected in Repository!**\n🔗 [View Scan Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\n🛑 **Take Immediate Action!**"
-          }' ${{ secrets.DISCORD_WEBHOOK }}
+          LEAKS=$(jq -r '.leaks[] | "🛑 **Secret Detected!**\nFile: \(.file)\nRule ID: \(.ruleID)\nCommit: \(.commit)\n\n**Action Required:**\n- Rotate this secret if it is a true positive.\n- If false positive, add this to `.gitleaksignore`:\n```\n\(.commit):\(.file):\(.ruleID):\(.line)\n```"' gitleaks-report.json)
+          echo "PR_COMMENT<<EOF" >> $GITHUB_ENV
+          echo "$LEAKS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Post Comment on PR
+        if: env.SECRETS_FOUND == 'true' && github.event_name == 'pull_request'
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            🚨 **Gitleaks Scan Detected Secrets!**  
+            🔗 [View Scan Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})  
+            ${{ env.PR_COMMENT }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
