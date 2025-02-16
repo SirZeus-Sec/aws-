@@ -14,38 +14,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Run Gitleaks Secret Scan
-        id: gitleaks_scan
-        continue-on-error: true
-        run: |
-          gitleaks detect --redact --report=gitleaks-report.json || echo "Gitleaks scan failed"
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
 
-      - name: Check if secrets were found
-        id: check_secrets
+      - name: Send Webhook Notification
+        if: always()
         run: |
-          if grep -q '"leaks":\[\]' gitleaks-report.json; then
-            echo "No secrets found"
-            echo "SECRETS_FOUND=false" >> $GITHUB_ENV
-          else
-            echo "🚨 Secrets detected by Gitleaks!"
-            echo "SECRETS_FOUND=true" >> $GITHUB_ENV
-          fi
+          curl -X POST -H "Content-Type: application/json" \
+          -d '{"content": "🔴 Gitleaks Scan Completed! Check results: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}' \
+          "${{ secrets.DISCORD_WEBHOOK }}"
 
-      - name: Extract Secret Details
-        if: env.SECRETS_FOUND == 'true'
-        run: |
-          LEAKS=$(jq -r '.leaks[] | "🛑 **Secret Detected!**\nFile: \(.file)\nRule ID: \(.ruleID)\nCommit: \(.commit)\n\n**Action Required:**\n- Rotate this secret if it is a true positive.\n- If false positive, add this to `.gitleaksignore`:\n```\n\(.commit):\(.file):\(.ruleID):\(.line)\n```"' gitleaks-report.json)
-          echo "PR_COMMENT<<EOF" >> $GITHUB_ENV
-          echo "$LEAKS" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
 
-      - name: Post Comment on PR
-        if: env.SECRETS_FOUND == 'true' && github.event_name == 'pull_request'
-        uses: mshick/add-pr-comment@v2
-        with:
-          message: |
-            🚨 **Gitleaks Scan Detected Secrets!**  
-            🔗 [View Scan Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})  
-            ${{ env.PR_COMMENT }}
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
