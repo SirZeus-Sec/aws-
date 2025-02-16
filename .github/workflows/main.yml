@@ -1,37 +1,20 @@
 name: gitleaks
-
 on:
   pull_request:
   push:
   workflow_dispatch:
   schedule:
-    - cron: "0 4 * * *" # Run daily at 4 AM UTC
+    - cron: "0 4 * * *" # Run once a day at 4 AM UTC
 
 jobs:
   scan:
     name: gitleaks
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch full history for deep scanning
-
-      - name: Run Gitleaks scan
+          fetch-depth: 0
+      - name: Run Gitleaks Secret Scan
         uses: gitleaks/gitleaks-action@v2
-        id: gitleaks
-        continue-on-error: false  # Stop workflow if secrets are found
-
-      - name: Notify Discord if secrets found
-        if: failure()
         env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: |
-          if [[ -z "$DISCORD_WEBHOOK" ]]; then
-            echo "Error: DISCORD_WEBHOOK is not set!"
-            exit 1
-          fi
-          curl -H "Content-Type: application/json" \
-               -X POST \
-               -d '{"username": "Gitleaks Bot", "content": "⚠️ Gitleaks detected secrets in PR/commit! Review logs immediately."}' \
-               "$DISCORD_WEBHOOK"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
