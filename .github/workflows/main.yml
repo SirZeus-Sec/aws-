@@ -19,26 +19,32 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
 
+      - name: Run Gitleaks Secret Scan
+        id: gitleaks_scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+
       - name: Send Discord Notification if Secrets Found
-        if: failure() # Runs only if Gitleaks fails (secrets detected)
+        if: failure()  # Run this step only if the Gitleaks scan fails (i.e., secrets detected)
         run: |
           curl -H "Content-Type: application/json" \
-          -X POST \
-          -d '{
-            "username": "Gitleaks",
-            "avatar_url": "https://avatars.githubusercontent.com/u/54240749?s=200&v=4",
-            "embeds": [{
-              "title": "🚨 Gitleaks Scan Detected Secrets!",
-              "description": "🛑 **Secret Detected!**\n🔗 **[View Scan Results](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})**",
-              "color": 16711680,
-              "fields": [
-                { "name": "Repository", "value": "${{ github.repository }}", "inline": true },
-                { "name": "Branch", "value": "${{ github.ref_name }}", "inline": true },
-                { "name": "Commit", "value": "[`${{ github.sha }}`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})", "inline": false },
-                { "name": "Action Required", "value": "🚨 **Rotate this secret ASAP if it's real.**\n🛑 **If false positive, add this to `.gitleaksignore`**", "inline": false }
-              ]
-            }]
-          }' \
-          ${{ secrets.DISCORD_WEBHOOK }}
-
+            -X POST \
+            -d '{
+              "username": "Gitleaks",
+              "avatar_url": "https://avatars.githubusercontent.com/u/54240749?s=200&v=4",
+              "embeds": [{
+                "title": "🚨 Gitleaks Scan Detected Secrets!",
+                "description": "🛑 **Secret Detected!**\n🔗 **[View Scan Results](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})**",
+                "color": 16711680,
+                "fields": [
+                  { "name": "Repository", "value": "${{ github.repository }}", "inline": true },
+                  { "name": "Branch", "value": "${{ github.ref_name }}", "inline": true },
+                  { "name": "Commit", "value": "[`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})", "inline": false },
+                  { "name": "Action Required", "value": "🚨 **Rotate this secret ASAP if it's real.**\n🛑 **If false positive, add this to `.gitleaksignore`**", "inline": false }
+                ]
+              }]
+            }' "${{ secrets.DISCORD_WEBHOOK_URL }}"
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
 
