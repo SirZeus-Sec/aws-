@@ -1,0 +1,24 @@
+name: trufflehog
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *" # Run once a day at 4 AM UTC
+
+jobs:
+  scan:
+    name: trufflehog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install TruffleHog
+        run: |
+          pip install truffleHog
+      - name: Run TruffleHog Secret Scan
+        run: |
+           trufflehog filesystem --json --entropy=True --path ./ > trufflehog_results.json || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
