@@ -1,5 +1,4 @@
 name: trufflehog
-
 on:
   pull_request:
   push:
@@ -7,30 +6,19 @@ on:
   schedule:
     - cron: "0 4 * * *" # Run once a day at 4 AM UTC
 
-permissions:
-  contents: read
-  pull-requests: write
-
 jobs:
   scan:
-   - name: Run TruffleHog Secret Scan
-  run: |
-    trufflehog --json --regex --entropy=True ./ > trufflehog_results.json || true
-
-   - name: Comment on PR if Secrets Found
-  if: github.event_name == 'pull_request'
-  run: |
-    if [ -s trufflehog_results.json ] && grep -q 'found_secrets' trufflehog_results.json; then
-      echo "## 🛑 TruffleHog Secret Scan Report" > pr_comment.md
-      echo "" >> pr_comment.md
-      
-      jq -r '.found_secrets[] | "**🔑 Secret Found in:** " + .SourceMetadata.Data + "\n**🛠 Rule:** " + .DetectorName + "\n**🔄 Commit:** " + .Raw.CommitHash + "\n"' trufflehog_results.json >> pr_comment.md
-      
-      echo "" >> pr_comment.md
-      echo "🚨 **Action Required:** If this is a valid secret, please rotate it ASAP!" >> pr_comment.md
-      echo "If this is a false positive, add it to the ignore list." >> pr_comment.md
-      
-      gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
-    fi
-  env:
-    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    name: trufflehog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install TruffleHog
+        run: |
+          pip install truffleHog
+      - name: Run TruffleHog Secret Scan
+        run: |
+          trufflehog --regex --no-entropies https://github.com/${{ github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
