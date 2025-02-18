@@ -14,23 +14,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          
       - name: Install TruffleHog
         run: |
-          pip install truffleHog
+          pip install trufflehog
+
       - name: Run TruffleHog Secret Scan
+        id: trufflehog_scan
         run: |
-          trufflehog --regex --entropy=True https://github.com/$GITHUB_REPOSITORY
-        env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          trufflehog --regex --entropy=True https://github.com/$GITHUB_REPOSITORY > result.json
 
       - name: Create PR Comment if Secrets Found
-        if: steps.trufflehog_scan.outcome == 'failure'
+        if: steps.trufflehog_scan.outcome == 'failure'  # Only run if secrets are found
         run: |
           SECRETS=$(jq -r '.found_secrets[] | "**File:** " + .SourceMetadata.Data + "\n**Reason:** " + .DetectorName + "\n" ' result.json)
-          COMMENT="### TruffleHog Secret Scan Results\n\n"
-          COMMENT="${COMMENT}#### Found Secrets\n"
-          COMMENT="${COMMENT}$SECRETS"
-          echo "$COMMENT" > pr_comment.md
-          gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
+          
+          # Check if there are any secrets
+          if [ -n "$SECRETS" ]; then
+            COMMENT="### 🚨 TruffleHog Secret Scan Results 🚨\n\n"
+            COMMENT="${COMMENT}#### Found Secrets\n"
+            COMMENT="${COMMENT}$SECRETS"
+            echo "$COMMENT" > pr_comment.md
+            gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
+          else
+            echo "No secrets found, no comment posted."
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
