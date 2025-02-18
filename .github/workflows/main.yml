@@ -1,9 +1,6 @@
 name: 'detect-secrets Action'
 
-branding:
-  icon: 'alert-octagon'
-  color: 'red'
-  
+
 on:
   push:
     branches:
