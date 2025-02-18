@@ -20,8 +20,8 @@ jobs:
       - name: Run TruffleHog Secret Scan
         run: |
          echo "# TruffleHog Secret Scan Report" > result.md
-         trufflehog --regex --entropy=True https://github.com/${{ github.repository }} | \
-         awk 'BEGIN {FS=":"} {if ($0 ~ /Reason/) {print "## [SECRET FOUND]"; print "**Reason:** " $0} else if ($0 ~ /Filepath/) {print "### **Filepath:** " $0} else {print $0}}' >> result.md
+         trufflehog --regex --entropy=True https://github.com/${{ github.repository }} >> result.md
          cat result.md
+
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
