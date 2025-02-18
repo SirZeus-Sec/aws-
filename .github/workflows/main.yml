@@ -25,14 +25,6 @@ jobs:
       - name: Install TruffleHog
         run: pip install truffleHog
 
-      - name: Find Changed Files (PR Only)
-        id: changed-files
-        if: github.event_name == 'pull_request'
-        run: |
-          git fetch --prune --unshallow
-          git diff --name-only origin/${{ github.event.repository.default_branch }} HEAD > changed_files.txt
-          echo "Changed files:"
-          cat changed_files.txt
 
       - name: Run TruffleHog Scan (PR)
         if: github.event_name == 'pull_request'
