@@ -1,4 +1,5 @@
-name: trufflehog
+name: TruffleHog Secret Scan
+
 on:
   pull_request:
   push:
@@ -8,43 +9,36 @@ on:
 
 jobs:
   scan:
-    name: trufflehog
+    name: TruffleHog Secret Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Checkout the code for the PR
+      - uses: actions/checkout@v2
         with:
           fetch-depth: 0
-          
-      - name: Install TruffleHog
-        run: |
-          pip install trufflehog
+          ref: ${{ github.head_ref }} # Necessary for pull request workflow trigger
 
-      - name: Run TruffleHog Secret Scan
-        id: trufflehog_scan
-        run: |
-          echo "Running TruffleHog scan on repository $GITHUB_REPOSITORY"
-          trufflehog --regex --entropy=True $GITHUB_REPOSITORY > result.json 2>&1
-          if [ $? -ne 0 ]; then
-            echo "TruffleHog scan failed with exit code $?. Check logs for errors."
-            cat result.json
-            exit 1
-          fi
-          echo "TruffleHog scan completed successfully."
-          
+      # Run TruffleHog secret scan using custom arguments
+      - name: trufflehog-actions-scan
+        uses: edplato/trufflehog-actions-scan@master
+        with:
+          scanArguments: "--regex --entropy=False --max_depth=5 --rules /regexes.json" # Add custom options here
+
+      # Create PR comment if secrets are found
       - name: Create PR Comment if Secrets Found
-        if: steps.trufflehog_scan.outcome == 'failure'  # Only run if secrets are found
+        if: steps.trufflehog-actions-scan.outputs.found_secrets == 'true'  # Only run if secrets are found
         run: |
-          SECRETS=$(jq -r '.found_secrets[] | "**File:** " + .SourceMetadata.Data + "\n**Reason:** " + .DetectorName + "\n" ' result.json)
+          echo "Secrets detected. Creating PR comment..."
+          # Comment body template
+          COMMENT="### 🚨 TruffleHog Secret Scan Results 🚨\n\n"
+          COMMENT="${COMMENT}#### Secrets Found:\n"
           
-          # Check if there are any secrets
-          if [ -n "$SECRETS" ]; then
-            COMMENT="### 🚨 TruffleHog Secret Scan Results 🚨\n\n"
-            COMMENT="${COMMENT}#### Found Secrets\n"
-            COMMENT="${COMMENT}$SECRETS"
-            echo "$COMMENT" > pr_comment.md
-            gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
-          else
-            echo "No secrets found, no comment posted."
-          fi
+          # Add found secrets details (this may vary based on output format)
+          COMMENT="${COMMENT}$(jq -r '.found_secrets[] | "**File:** " + .File + "\n**Reason:** " + .Reason + "\n**Secret:** " + .Secret' result.json)"
+          
+          echo "$COMMENT" > pr_comment.md
+          
+          # Posting the comment to the PR
+          gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
