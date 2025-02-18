@@ -13,41 +13,24 @@ permissions:
 
 jobs:
   scan:
-    name: trufflehog
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+   - name: Run TruffleHog Secret Scan
+  run: |
+    trufflehog --json --regex --entropy=True ./ > trufflehog_results.json || true
+
+   - name: Comment on PR if Secrets Found
+  if: github.event_name == 'pull_request'
+  run: |
+    if [ -s trufflehog_results.json ] && grep -q 'found_secrets' trufflehog_results.json; then
+      echo "## 🛑 TruffleHog Secret Scan Report" > pr_comment.md
+      echo "" >> pr_comment.md
       
-      - name: Install TruffleHog
-        run: pip install truffleHog
-
-      - name: Run TruffleHog Secret Scan
-        run: |
-          trufflehog --json --regex --entropy=True ./ > trufflehog_results.json || true
-
-      - name: Parse Secrets and Comment on PR
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "## 🛑 TruffleHog Secret Detection Report" > pr_comment.md
-          echo "" >> pr_comment.md
-
-          SECRETS=$(jq -r '.found_secrets[] | "**🔑 Secret Found in:** " + .SourceMetadata.Data + "\n**🛠 Rule:** " + .DetectorName + "\n**🔄 Commit:** " + .Raw.CommitHash + "\n" ' trufflehog_results.json)
-
-          if [ -n "$SECRETS" ]; then
-            echo "$SECRETS" >> pr_comment.md
-            echo "" >> pr_comment.md
-            echo "If this secret is **valid**, please **rotate it ASAP**. 🚨" >> pr_comment.md
-            echo "If this is a **false positive**, add this fingerprint to your ignore file:" >> pr_comment.md
-            echo '```' >> pr_comment.md
-            echo "$SECRETS" | awk '{print $NF}' >> pr_comment.md
-            echo '```' >> pr_comment.md
-
-            gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
-          else
-            echo "No secrets found."
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      jq -r '.found_secrets[] | "**🔑 Secret Found in:** " + .SourceMetadata.Data + "\n**🛠 Rule:** " + .DetectorName + "\n**🔄 Commit:** " + .Raw.CommitHash + "\n"' trufflehog_results.json >> pr_comment.md
+      
+      echo "" >> pr_comment.md
+      echo "🚨 **Action Required:** If this is a valid secret, please rotate it ASAP!" >> pr_comment.md
+      echo "If this is a false positive, add it to the ignore list." >> pr_comment.md
+      
+      gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
+    fi
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
