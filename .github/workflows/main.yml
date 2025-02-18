@@ -19,9 +19,6 @@ jobs:
           pip install truffleHog
       - name: Run TruffleHog Secret Scan
         run: |
-         echo "# TruffleHog Secret Scan Report" > result.md
-         trufflehog --regex --entropy=True https://github.com/${{ github.repository }} >> result.md
-         cat result.md
-
+         trufflehog --regex --entropy=True https://github.com/${{ github.repository }}
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
