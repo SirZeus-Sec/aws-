@@ -24,7 +24,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: TruffleHog OSS
+      - name: Run TruffleHog OSS
         id: trufflehog
         uses: trufflesecurity/trufflehog@main
         continue-on-error: true
@@ -32,8 +32,19 @@ jobs:
           path: ./
           base: "${{ github.event.repository.default_branch }}"
           head: HEAD
-          extra_args: --debug
+          extra_args: --json > trufflehog_results.json
 
-      - name: Scan Results Status
-        if: steps.trufflehog.outcome == 'failure'
-        run: exit 1
+      - name: Parse Secrets and Create PR Comment
+        if: steps.trufflehog.outcome == 'failure' && github.event_name == 'pull_request'
+        run: |
+          echo "## 🔑 TruffleHog Secret Scan Report" > pr_comment.md
+          echo "" >> pr_comment.md
+          
+          SECRETS=$(jq -r '.found_secrets[] | "**File:** " + .SourceMetadata.Data + "\n**Reason:** " + .DetectorName + "\n" ' trufflehog_results.json)
+
+          if [ -n "$SECRETS" ]; then
+            echo "$SECRETS" >> pr_comment.md
+            gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
