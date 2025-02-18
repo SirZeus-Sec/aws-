@@ -20,7 +20,7 @@ jobs:
       - name: Run TruffleHog Secret Scan
         id: trufflehog_scan
         run: |
-          trufflehog --regex --entropy=True https://github.com/${{ github.repository }} > result.json
+           trufflehog --regex --entropy=True https://github.com/$GITHUB_REPOSITORY
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
 
