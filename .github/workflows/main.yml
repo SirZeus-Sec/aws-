@@ -22,3 +22,15 @@ jobs:
           trufflehog --regex --entropy=True https://github.com/$GITHUB_REPOSITORY
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+
+      - name: Create PR Comment if Secrets Found
+        if: steps.trufflehog_scan.outcome == 'failure'
+        run: |
+          SECRETS=$(jq -r '.found_secrets[] | "**File:** " + .SourceMetadata.Data + "\n**Reason:** " + .DetectorName + "\n" ' result.json)
+          COMMENT="### TruffleHog Secret Scan Results\n\n"
+          COMMENT="${COMMENT}#### Found Secrets\n"
+          COMMENT="${COMMENT}$SECRETS"
+          echo "$COMMENT" > pr_comment.md
+          gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
