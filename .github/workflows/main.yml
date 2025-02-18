@@ -22,9 +22,15 @@ jobs:
       - name: Run TruffleHog Secret Scan
         id: trufflehog_scan
         run: |
-          trufflehog --regex --entropy=True $GITHUB_REPOSITORY > result.json
-
-
+          echo "Running TruffleHog scan on repository $GITHUB_REPOSITORY"
+          trufflehog --regex --entropy=True $GITHUB_REPOSITORY > result.json 2>&1
+          if [ $? -ne 0 ]; then
+            echo "TruffleHog scan failed with exit code $?. Check logs for errors."
+            cat result.json
+            exit 1
+          fi
+          echo "TruffleHog scan completed successfully."
+          
       - name: Create PR Comment if Secrets Found
         if: steps.trufflehog_scan.outcome == 'failure'  # Only run if secrets are found
         run: |
