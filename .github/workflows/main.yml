@@ -1,50 +1,53 @@
-name: Test
+name: trufflehog
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *" # Run once a day at 4 AM UTC
 
 permissions:
   contents: read
-  id-token: write
-  issues: write
   pull-requests: write
 
 jobs:
-  TruffleHog:
+  scan:
+    name: trufflehog
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      
+      - name: Install TruffleHog
+        run: pip install truffleHog
 
-      - name: Run TruffleHog OSS
-        id: trufflehog
-        uses: trufflesecurity/trufflehog@main
-        continue-on-error: true
-        with:
-          path: ./
-          base: "${{ github.event.repository.default_branch }}"
-          head: HEAD
-          extra_args: --json > trufflehog_results.json
-
-      - name: Parse Secrets and Create PR Comment
-        if: steps.trufflehog.outcome == 'failure' && github.event_name == 'pull_request'
+      - name: Run TruffleHog Secret Scan
         run: |
-          echo "## 🔑 TruffleHog Secret Scan Report" > pr_comment.md
+          trufflehog --json --regex --entropy=True ./ > trufflehog_results.json || true
+
+      - name: Parse Secrets and Comment on PR
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "## 🛑 TruffleHog Secret Detection Report" > pr_comment.md
           echo "" >> pr_comment.md
-          
-          SECRETS=$(jq -r '.found_secrets[] | "**File:** " + .SourceMetadata.Data + "\n**Reason:** " + .DetectorName + "\n" ' trufflehog_results.json)
+
+          SECRETS=$(jq -r '.found_secrets[] | "**🔑 Secret Found in:** " + .SourceMetadata.Data + "\n**🛠 Rule:** " + .DetectorName + "\n**🔄 Commit:** " + .Raw.CommitHash + "\n" ' trufflehog_results.json)
 
           if [ -n "$SECRETS" ]; then
             echo "$SECRETS" >> pr_comment.md
+            echo "" >> pr_comment.md
+            echo "If this secret is **valid**, please **rotate it ASAP**. 🚨" >> pr_comment.md
+            echo "If this is a **false positive**, add this fingerprint to your ignore file:" >> pr_comment.md
+            echo '```' >> pr_comment.md
+            echo "$SECRETS" | awk '{print $NF}' >> pr_comment.md
+            echo '```' >> pr_comment.md
+
             gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
+          else
+            echo "No secrets found."
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
