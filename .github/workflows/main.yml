@@ -1,66 +1,24 @@
-name: TruffleHog Secret Scan
-
+name: trufflehog
 on:
   pull_request:
   push:
   workflow_dispatch:
   schedule:
-    - cron: "0 4 * * *" # Run daily at 4 AM UTC
-
-permissions:
-  contents: read
-  pull-requests: write  # Needed to comment on PRs
+    - cron: "0 4 * * *" # Run once a day at 4 AM UTC
 
 jobs:
   scan:
-    name: TruffleHog Scan
+    name: trufflehog
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch full history for accurate scans
-
+          fetch-depth: 0
       - name: Install TruffleHog
-        run: pip install truffleHog
-
-      - name: Run TruffleHog Scan (PR)
-        if: github.event_name == 'pull_request'
         run: |
-          if [ -s changed_files.txt ]; then
-            echo "Scanning modified files..."
-            cat changed_files.txt | xargs trufflehog filesystem --json --entropy=True --path > trufflehog_results.json || true
-          else
-            echo "No changed files to scan."
-          fi
-
-      - name: Run TruffleHog Scan (Push & Schedule)
-        if: github.event_name != 'pull_request'
+          pip install truffleHog
+      - name: Run TruffleHog Secret Scan
         run: |
-          trufflehog filesystem --json --entropy=True --path ./ > trufflehog_results.json || true
-
-      - name: Check for Leaks
-        id: check-results
-        run: |
-          if grep -q '"DetectorName":' trufflehog_results.json; then
-            echo "Secrets found!"
-            echo "found=true" >> $GITHUB_ENV
-          else
-            echo "No secrets found."
-            echo "found=false" >> $GITHUB_ENV
-          fi
-
-      - name: Comment on PR with Secrets
-        if: env.found == 'true' && github.event_name == 'pull_request'
-        run: |
-          echo "## 🔑 TruffleHog Secret Scan Report" > pr_comment.md
-          echo "" >> pr_comment.md
-          echo "**🛑 TruffleHog has detected secrets in this PR!**" >> pr_comment.md
-          echo "" >> pr_comment.md
-          jq -r '.found_secrets[] | "**File:** " + .SourceMetadata.Data + "\n**Reason:** " + .DetectorName + "\n" ' trufflehog_results.json >> pr_comment.md
-          echo "" >> pr_comment.md
-          echo "**⚠️ If this is a real secret, rotate it immediately.**" >> pr_comment.md
-          gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
+           trufflehog --regex --entropy=True https://github.com/$GITHUB_REPOSITORY
         env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }} 
