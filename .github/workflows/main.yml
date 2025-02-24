@@ -11,8 +11,6 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install TruffleHog
         run: pip install trufflehog
@@ -22,24 +20,21 @@ jobs:
         run: |
           git fetch origin ${{ github.event.pull_request.base.ref }}
           BASE_COMMIT=$(git merge-base origin/${{ github.event.pull_request.base.ref }} HEAD)
-          echo "Base Commit: $BASE_COMMIT"
-
+          
           # Get only added or modified files
           git diff --diff-filter=AM --name-only $BASE_COMMIT HEAD > changed_files.txt
-          echo "Changed files:"
-          cat changed_files.txt
-
-      - name: Run TruffleHog on Changed Files
-        run: |
+          
           if [ ! -s changed_files.txt ]; then
             echo "No changed files to scan."
             exit 0
           fi
-          
+
+      - name: Run TruffleHog on Changed Files
+        run: |
           while read file; do
             if [[ -f "$file" ]]; then  # Ensure it's a valid file
               echo "🔍 Scanning $file..."
-              trufflehog --json "$file" | tee -a trufflehog_output.txt
+              trufflehog --json --path="$file" | tee -a trufflehog_output.txt
             fi
           done < changed_files.txt
 
@@ -51,14 +46,10 @@ jobs:
       - name: Post TruffleHog Results as PR Comment
         if: failure()
         env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.mu_GITHUB_TOKEN }}
         run: |
           COMMENT="🚨 TruffleHog found secrets in this PR! Please check the logs."
           PR_NUMBER="${{ github.event.pull_request.number }}"
-          if [[ -z "$PR_NUMBER" ]]; then
-            echo "No PR number found. Skipping comment."
-            exit 0
-          fi
           curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"body\": \"$COMMENT\"}" \
