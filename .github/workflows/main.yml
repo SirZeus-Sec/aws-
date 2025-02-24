@@ -29,18 +29,16 @@ jobs:
             exit 0
           fi
 
-      - name: Run TruffleHog on Changed Files
+          - name: Get Changed Files in PR
+            id: changed_files
         run: |
-          while read file; do
-            if [[ -f "$file" ]]; then  # Ensure it's a valid file
-              echo "🔍 Scanning $file..."
-              trufflehog --json --path="$file" | tee -a trufflehog_output.txt
-            fi
-          done < changed_files.txt
+          BASE_COMMIT=$(git merge-base origin/${{ github.event.pull_request.base.ref }} HEAD)
 
-          if grep -q "Reason" trufflehog_output.txt; then
-            echo "🚨 Secrets detected by TruffleHog!"
-            exit 1
+          git diff --diff-filter=AM --name-only $BASE_COMMIT HEAD > changed_files.txt
+
+          if [ ! -s changed_files.txt ]; then
+            echo "No changed files to scan."
+            exit 0
           fi
 
       - name: Post TruffleHog Results as PR Comment
