@@ -2,70 +2,73 @@ name: TruffleHog Secret Scan
 
 on:
   pull_request:
-    paths-ignore:
-      - '**/*.md'
-     
+    types: [opened, synchronize]
   workflow_dispatch:
 
 jobs:
-  trufflehog_scan:
-    name: TruffleHog Scan
+  secret-scan:
+    name: TruffleHog Secret Scan
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
-
-      - name: Set Up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
+          fetch-depth: 0
 
       - name: Install TruffleHog
         run: |
           pip install trufflehog
 
-      - name: Get Changed Files
-        id: changed_files
+      - name: Identify Changed Files
+        id: changed-files
         run: |
-          git fetch origin ${{ github.base_ref }} --depth=1
-          git diff --name-only origin/${{ github.base_ref }}...HEAD > changed_files.txt
-          if [ ! -s changed_files.txt ]; then
-            echo "No changed files to scan."
-            exit 0
-          fi
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          git diff --name-only origin/${{ github.event.pull_request.base.ref }} > changed_files.txt
+          echo "Changed files:"
+          cat changed_files.txt
 
-      - name: Run TruffleHog on Changed Files
+      - name: Scan Changed Files with TruffleHog
+        id: trufflehog-scan
         run: |
-          while read -r file; do
-            echo "🔍 Scanning $file..."
-            trufflehog filesystem --json $file | tee -a trufflehog_output.json
+          mkdir -p trufflehog_results
+          while IFS= read -r file; do
+            echo "Scanning $file..."
+            trufflehog filesystem --json $file > trufflehog_results/"$(basename "$file").json"
           done < changed_files.txt
-        env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
 
       - name: Check for Secrets
-        if: always()
+        id: check-secrets
         run: |
-          if grep -q '"reason":' trufflehog_output.json; then
-            echo "🚨 Secrets detected by TruffleHog!"
-            exit 1
-          else
-            echo "✅ No secrets found."
-          fi
+          found_secrets=false
+          for result in trufflehog_results/*.json; do
+            if [ -s "$result" ]; then
+              found_secrets=true
+              echo "Secrets found in $(basename "$result"):"
+              cat "$result"
+            fi
+          done
+          echo "secrets_found=$found_secrets" >> $GITHUB_ENV
 
-      - name: Post TruffleHog Results as PR Comment
+      - name: Fail if Secrets Found
+        if: env.secrets_found == 'true'
+        run: |
+          echo "Secrets detected. Failing the workflow."
+          exit 1
+
+      - name: Post Comment on PR
         if: failure()
         run: |
-          COMMENT="🚨 TruffleHog found secrets in this PR! Please review the findings."
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          if [ -n "$PR_NUMBER" ]; then
-            curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d "{\"body\": \"$COMMENT\"}" \
-              "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments"
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          comment="🚨 TruffleHog detected secrets in the following files:\n"
+          for result in trufflehog_results/*.json; do
+            if [ -s "$result" ]; then
+              comment+="$(basename "$result")\n"
+              comment+="\`\`\`\n$(cat "$result")\n\`\`\`\n"
+            fi
+          done
+          pr_number=${{ github.event.pull_request.number }}
+          payload=$(jq -n --arg body "$comment" '{body: $body}')
+          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+               -H "Content-Type: application/json" \
+               -d "$payload" \
+               "https://api.github.com/repos/${{ github.repository }}/issues/$pr_number/comments"
