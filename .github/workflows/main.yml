@@ -2,73 +2,66 @@ name: TruffleHog Secret Scan
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    branches:
+      - main  # Adjust this to your default branch
   workflow_dispatch:
 
 jobs:
-  secret-scan:
-    name: TruffleHog Secret Scan
+  trufflehog_scan:
+    name: TruffleHog Scan
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
         with:
-          fetch-depth: 0
+          fetch-depth: 2  # Fetch enough history to detect changes
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
 
       - name: Install TruffleHog
         run: |
           pip install trufflehog
 
-      - name: Identify Changed Files
-        id: changed-files
+      - name: Get List of Changed Files
+        id: changed_files
         run: |
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          git diff --name-only origin/${{ github.event.pull_request.base.ref }} > changed_files.txt
-          echo "Changed files:"
-          cat changed_files.txt
+          git fetch origin ${{ github.base_ref }} --depth=1
+          git diff --name-only HEAD origin/${{ github.base_ref }} > changed_files.txt
+          if [ ! -s changed_files.txt ]; then
+            echo "No changes detected."
+            exit 0
+          fi
 
-      - name: Scan Changed Files with TruffleHog
-        id: trufflehog-scan
+      - name: Run TruffleHog on Changed Files
         run: |
-          mkdir -p trufflehog_results
-          while IFS= read -r file; do
+          while read -r file; do
             echo "Scanning $file..."
-            trufflehog filesystem --json $file > trufflehog_results/"$(basename "$file").json"
+            trufflehog filesystem "$file" | tee -a trufflehog_results.txt
           done < changed_files.txt
 
       - name: Check for Secrets
-        id: check-secrets
         run: |
-          found_secrets=false
-          for result in trufflehog_results/*.json; do
-            if [ -s "$result" ]; then
-              found_secrets=true
-              echo "Secrets found in $(basename "$result"):"
-              cat "$result"
-            fi
-          done
-          echo "secrets_found=$found_secrets" >> $GITHUB_ENV
+          if grep -q "Reason" trufflehog_results.txt; then
+            echo "🚨 Secrets detected by TruffleHog!"
+            exit 1
+          else
+            echo "✅ No secrets found."
+          fi
 
-      - name: Fail if Secrets Found
-        if: env.secrets_found == 'true'
-        run: |
-          echo "Secrets detected. Failing the workflow."
-          exit 1
-
-      - name: Post Comment on PR
+      - name: Post TruffleHog Results as PR Comment
         if: failure()
         run: |
-          comment="🚨 TruffleHog detected secrets in the following files:\n"
-          for result in trufflehog_results/*.json; do
-            if [ -s "$result" ]; then
-              comment+="$(basename "$result")\n"
-              comment+="\`\`\`\n$(cat "$result")\n\`\`\`\n"
-            fi
-          done
-          pr_number=${{ github.event.pull_request.number }}
-          payload=$(jq -n --arg body "$comment" '{body: $body}')
-          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-               -H "Content-Type: application/json" \
-               -d "$payload" \
-               "https://api.github.com/repos/${{ github.repository }}/issues/$pr_number/comments"
+          COMMENT="🚨 TruffleHog found potential secrets in this PR! Please review the findings."
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No PR number found. Skipping comment."
+            exit 0
+          fi
+          curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"body\": \"$COMMENT\"}" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments"
