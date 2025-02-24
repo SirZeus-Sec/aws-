@@ -1,26 +1,73 @@
-name: Scan Code for Secrets
-
+name: TruffleHog Secrets Scan
 on:
- pull_request:
-    - opened
-    - reopened
-    - ready_for_review
-    - synchronize
- push:
+  pull_request:
     branches:
-      - '**'
-    tags:
-      - '!**'
+      - '**'  # This will trigger the workflow for pull requests targeting any branch
 
 jobs:
-  check-for-secrets:
-    runs-on: 'ubuntu-latest'
+  TruffleHog:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-      - name: Run Yelp's detect-secrets
-        uses: RobertFischer/detect-secrets-action@v2.0.0
-      - name: Commit back .secrets.baseline (if it was missing)
-        uses: stefanzweifel/git-auto-commit-action@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
         with:
-          commit_message: "build(detect-secrets): Commit the newly-generated .secrets.baseline file"
+          fetch-depth: 0
+
+      - name: Run TruffleHog
+        id: trufflehog
+        run: |
+          # Run TruffleHog and capture the output
+          output=$(docker run --rm -v "$(pwd)":/tmp ghcr.io/trufflesecurity/trufflehog:latest \
+            git file:///tmp \
+            --since-commit ${{ github.event.pull_request.base.sha }} \
+            --only-verified \
+            --json)
+          
+          # Parse the output to check for secrets
+          if echo "$output" | grep -q '"Verified": true'; then
+            echo "::set-output name=findings::true"
+            echo "$output" | jq -c '. | select(.Verified == true)' > findings.json
+          else
+            echo "::set-output name=findings::false"
+          fi
+
+      - name: Comment on PR if secrets are found
+        if: steps.trufflehog.outputs.findings == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const findings = require('./findings.json');
+            const findingsList = findings.map(finding => `- **File**: ${finding.SourceMetadata.Data.Filesystem.file}\n  **Secret**: ${finding.Raw}`).join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const hasExistingComment = comments.some(comment => comment.body.includes("TruffleHog found secrets in the following files:"));
+
+            if (!hasExistingComment) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: `🚨 TruffleHog found verified secrets in the following files:\n\n${findingsList}\n\nPlease remove these secrets before merging.`,
+              });
+            }
+
+      - name: Add success message if no issues are detected
+        if: steps.trufflehog.outputs.findings == 'false'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: "✅ TruffleHog scan completed successfully. No verified secrets detected.",
+            });
+
+      - name: Fail the job if secrets are found
+        if: steps.trufflehog.outputs.findings == 'true'
+        run: exit 1
