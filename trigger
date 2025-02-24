@@ -1,0 +1,2 @@
+TEST_SECRET=abcd1234
+aws_key=9ewur8238r3g49h8rfb423uf028if24
