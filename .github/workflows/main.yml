@@ -1,67 +1,37 @@
-name: TruffleHog Secret Scan
+name: TruffleHog Test Workflow
 
 on:
   pull_request:
-    branches:
-      - main  # Adjust this to your default branch
   workflow_dispatch:
+    inputs:
+      DISABLE_TRUFFLEHOG:
+        description: 'Set to true to disable TruffleHog scan'
+        required: false
+        default: 'false'
 
 jobs:
-  trufflehog_scan:
-    name: TruffleHog Scan
+
+  trufflehog-test:
     runs-on: ubuntu-latest
-
+    name: trufflehog-test 🔎 🔒
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      inputs.DISABLE_TRUFFLEHOG == 'false'
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 2  # Fetch enough history to detect changes
+          fetch-depth: 0
+          ref: ${{ github.ref }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v2
+      - name: Get changed files
+        id: changed-files
+        run: |
+          echo "files=$(git diff --name-only origin/${{ github.event.repository.default_branch }} || echo '/dev/null')" >> $GITHUB_OUTPUT
+
+      - name: TruffleHog scan
+        uses: trufflehog/trufflehog-action@v1.0.0
         with:
-          python-version: '3.x'
-
-      - name: Install TruffleHog
-        run: |
-          pip install trufflehog
-
-      - name: Get List of Changed Files
-        id: changed_files
-        run: |
-          git fetch origin ${{ github.base_ref }} --depth=1
-          git diff --name-only HEAD origin/${{ github.base_ref }} > changed_files.txt
-          if [ ! -s changed_files.txt ]; then
-            echo "No changes detected."
-            exit 0
-          fi
-
-      - name: Run TruffleHog on Changed Files
-        run: |
-          while read -r file; do
-            echo "Scanning $file..."
-            trufflehog filesystem "$file" | tee -a trufflehog_results.txt
-          done < changed_files.txt
-
-      - name: Check for Secrets
-        run: |
-          if grep -q "Reason" trufflehog_results.txt; then
-            echo "🚨 Secrets detected by TruffleHog!"
-            exit 1
-          else
-            echo "✅ No secrets found."
-          fi
-
-      - name: Post TruffleHog Results as PR Comment
-        if: failure()
-        run: |
-          COMMENT="🚨 TruffleHog found potential secrets in this PR! Please review the findings."
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          if [ -z "$PR_NUMBER" ]; then
-            echo "No PR number found. Skipping comment."
-            exit 0
-          fi
-          curl -s -X POST -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            -d "{\"body\": \"$COMMENT\"}" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/comments"
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          path: ${{ steps.changed-files.outputs.files }}
