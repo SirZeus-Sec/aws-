@@ -1,0 +1,1 @@
+AWS_Secret=8966r75edrf9809pgiy786t7rfc8yiv
