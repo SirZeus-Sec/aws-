@@ -13,10 +13,7 @@ jobs:
   trufflehog-test:
     runs-on: ubuntu-latest
     name: trufflehog-test 🔎 🔒
-    if: |
-      always() &&
-      github.event_name == 'pull_request' &&
-      inputs.DISABLE_TRUFFLEHOG == 'false'
+    if: ${{ github.event_name == 'pull_request' && inputs.DISABLE_TRUFFLEHOG != 'true' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -34,4 +31,3 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
           path: ${{ steps.changed-files.outputs.files }}
-          
