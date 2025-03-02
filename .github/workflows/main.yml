@@ -1,0 +1,36 @@
+name: TruffleHog Test Workflow
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      DISABLE_TRUFFLEHOG:
+        description: 'Set to true to disable TruffleHog scan'
+        required: false
+        default: 'false'
+
+jobs:
+  trufflehog-test:
+    runs-on: ubuntu-latest
+    name: trufflehog-test 🔎 🔒
+    if: |
+      always() &&
+      github.event_name == 'pull_request' &&
+      inputs.DISABLE_TRUFFLEHOG == 'false'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+
+      - name: Get changed files
+        id: changed-files
+        run: |
+          echo "files=$(git diff --name-only origin/${{ github.event.repository.default_branch }} || echo '/dev/null')" >> $GITHUB_OUTPUT
+
+      - name: TruffleHog scan
+        uses: trufflehog/trufflehog-action@v1.0.0
+        with:
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          path: ${{ steps.changed-files.outputs.files }}
