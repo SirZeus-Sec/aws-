@@ -10,7 +10,6 @@ on:
         default: 'false'
 
 jobs:
-
   trufflehog-test:
     runs-on: ubuntu-latest
     name: trufflehog-test 🔎 🔒
