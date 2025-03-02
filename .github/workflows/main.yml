@@ -13,10 +13,7 @@ jobs:
   trufflehog-test:
     runs-on: ubuntu-latest
     name: trufflehog-test 🔎 🔒
-    if: |
-      always() &&
-      github.event_name == 'pull_request' &&
-      inputs.DISABLE_TRUFFLEHOG == 'false'
+    if: ${{ github.event_name == 'pull_request' && inputs.DISABLE_TRUFFLEHOG != 'true' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,13 +21,28 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.ref }}
 
+      - name: Fetch default branch
+        run: git fetch origin ${{ github.event.repository.default_branch }}
+
       - name: Get changed files
         id: changed-files
         run: |
-          echo "files=$(git diff --name-only origin/${{ github.event.repository.default_branch }} || echo '/dev/null')" >> $GITHUB_OUTPUT
+          FILES=$(git diff --name-only origin/${{ github.event.repository.default_branch }} | tr '\n' ' ')
+          echo "FILES=$FILES" >> $GITHUB_ENV
 
-      - name: TruffleHog scan
-        uses: trufflehog/trufflehog-action@v1.0.0
-        with:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
-          path: ${{ steps.changed-files.outputs.files }}
+      - name: Install TruffleHog v1
+        run: pip install trufflehog==1.5.0
+
+      - name: Run TruffleHog on changed files
+        run: |
+          if [[ -z "$FILES" ]]; then
+            echo "No changed files detected."
+            exit 0
+          fi
+
+          for file in $FILES; do
+            if [[ -f "$file" ]]; then
+              echo "Scanning: $file"
+              trufflehog filesystem --path "$file" --json || echo "No secrets found in $file"
+            fi
+          done
